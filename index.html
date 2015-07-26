@@ -182,7 +182,7 @@ Out[1]: True
             <h2>flask-SQLAlchemy</h2>
             <p>
             <ul>
-              <li>Single wrapper for most of SQLAlchemy<li>
+              <li>Single wrapper for most of SQLAlchemy</li>
               <li>Preconfigured scope session</li>
               <li>Sessions are tied to the page lifecycle</li>
             </ul>
@@ -267,6 +267,268 @@ c = Cookie(cookie_name="Chocolate Chip",
 db.session.add(c)
 db.session.commit()
             </code></pre>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h2>Migrations</h2>
+            <img data-src="migration.png" />
+          </section>
+          <section>
+            <h2>flask-migrate</h2>
+            <p>Ties Alembic into flask-script!</p>
+            <pre><code data-trim>pip install flask-migrate</code></pre>
+          </section>
+          <section>
+            <h2>manage.py</h2>
+            <pre><code data-trim>
+from flask.ext.migrate import Migrate, MigrateCommand
+
+migrate = Migrate(app, db)
+
+manager.add_command('db', MigrateCommand)
+            </code></pre>
+          </section>
+          <section>
+            <h2>Initializing Alembic</h2>
+            <pre><code data-trim>$ python manage.py db init</code></pre>
+          </section>
+          <section>
+            <h2>Generating a migration</h2>
+            <pre><code data-trim>
+$ python manage.py db migrate -m "initial migration"
+INFO  [alembic.migration] Context impl SQLiteImpl.
+INFO  [alembic.migration] Will assume non-transactional DDL.
+  Generating flask-filled/migrations/versions/586131216f6_initial_migration.py ... done
+            </code></pre>
+          </section>
+          <section>
+            <h2>Running migrations</h2>
+            <pre><code data-trim>
+$ python manage.py db upgrade
+INFO  [alembic.migration] Context impl SQLiteImpl.
+INFO  [alembic.migration] Will assume non-transactional DDL.
+INFO  [alembic.migration] Running upgrade  -> 586131216f6, initial migration
+            </code></pre>
+          </section>
+        </section>
+        <section>
+          <section>
+            <h2>User Authentication</h2>
+            <img height=500 data-src="key.jpg" />
+          </section>
+          <section>
+            <h2>Flask-Login</h2>
+            <p><ul>
+              <li>Simplifies logging users in and out</li>
+              <li>Secures view functions with decorators</li>
+              <li>Protects session cookies</li>
+            </ul></p>
+            <pre><code data-trim>pip install flask-login</code></pre>
+          </section>
+          <section>
+            <h2>flaskfilled/__init__.py</h2>
+            <pre><code data-trim>
+from flask.ext.login import LoginManager
+
+login_manager = LoginManager()
+
+def create_app(config_name):
+    app = Flask(__name__)
+    app.config.from_object(config[config_name])
+
+    db.init_app(app)
+    login_manager.setup_app(app)
+
+    from .main import main as main_blueprint
+    app.register_blueprint(main_blueprint)
+
+    from .auth import auth as auth_blueprint
+    app.register_blueprint(auth_blueprint, url_prefix='/auth')
+
+    return app
+            </code></pre>
+          </section>
+          <section>
+            <h2>models.py</h2>
+            <pre><code data-trim>
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from flaskfilled import login_manager
+
+class User(db.Model):
+    __tablename__ = 'users'
+
+    username = db.Column(db.String, primary_key=True)
+    password = db.Column(db.String)
+    authenticated = db.Column(db.Boolean, default=False)
+            </code></pre>
+          </section>
+          <section>
+            <h2>User Model required methods</h2>
+            <pre><code data-trim>
+def is_active(self):
+    return True
+
+def get_id(self):
+    return self.email
+
+def is_authenticated(self):
+    return self.authenticated
+
+def is_anonymous(self):
+    return False
+            </code></pre>
+          </section>
+          <section>
+            <h2>User model password handling</h2>
+            <pre><code data-trim>
+  @property
+  def password(self):
+      raise AttributeError('password is not a readable attribute')
+
+  @password.setter
+  def password(self, password):
+      self.password_hash = generate_password_hash(password)
+
+  def verify_password(self, password):
+      return check_password_hash(self.password_hash, password)
+            </code></pre>
+          </section>
+          <section>
+            <h2>Setting up the Auth Blueprint</h2>
+            <h3>auth/__init__.py</h3>
+            <pre><code data-trim>
+from flask import Blueprint
+
+auth = Blueprint('auth', __name__)
+
+from . import views
+            </code></pre>
+          </section>
+          <section>
+            <h2>auth/views.py</h2>
+            <pre><code data-trim>
+from flask import render_template, redirect, request, url_for, flash
+
+from flask.ext.login import login_user, logout_user, login_required
+
+from . import auth
+from flaskfilled.models import User
+            </code></pre>
+          </section>
+          <section>
+            <h2>login</h2>
+            <pre><code data-trim>
+@auth.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '')
+        password = request.form.get('password', '')
+        user = User.query.filter_by(username=username).first()
+        if user is not None and user.verify_password(password):
+            login_user(user)
+            next = request.args.get('next')
+            return redirect(next or url_for('main.index'))
+        else:
+            flash('Wrong username or password.')
+    return render_template('auth/login.html')
+            </code></pre>
+          </section>
+          <section>
+            <h2>logout</h2>
+            <pre><code data-trim>
+@auth.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('You have been logged out.')
+    return redirect(url_for('main.index'))
+            </code></pre>
+          </section>
+          <section>
+            <h2>login template</h2>
+            <pre><code data-trim>
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>Login</h1>
+</div>
+<div class="col-md-4">
+    <form action="">
+    Username: <input type="text" name="username"><br>
+    Password: <input type="password" name="password"><br>
+    <input type="submit">
+    </form>
+    <br>
+    <p>Forgot your password? <a href="{{ url_for('auth.password_reset_request') }}">Click here to reset it</a>.</p>
+    <p>New user? <a href="{{ url_for('auth.register') }}">Click here to register</a>.</p>
+</div>
+{% endblock %}
+            </code></pre>
+          </section>
+          <section>
+            <h2>main/views.py</h2>
+            <pre><code data-trim>
+from flask import render_template
+
+from . import main
+
+
+@main.route('/', methods=['GET'])
+def index():
+    return render_template('main/index.html')
+            </code></pre>
+          </section>
+          <section>
+            <h2>index template</h2>
+            <pre><code data-trim>
+{% extends "base.html" %}
+
+{% block title %}The Index{% endblock %}
+
+{% block page_content %}
+{% if not current_user.is_authenticated() %}
+  <p><a href="{{ url_for('auth.login') }}">Click here to login</a>.</p>
+{% else %}
+  <p><a href="{{ url_for('auth.logout') }}">Click here to logout</a>.</p>
+{% endif %}
+{% endblock %}
+            </code></pre>
+          </section>
+          <section>
+            <h2>Create Users Migration and Apply it</h2>
+            <pre><code data-trim>
+$ python manage.py db migrate -m "User"
+  Generating /Users/jasonamyers/dev/flask-filled/migrations/versions/8d9327f04f_user.py ... done
+
+$ python manage.py db upgrade
+INFO  [alembic.migration] Running upgrade 586131216f6 -> 8d9327f04f, User
+            </code></pre>
+          </section>
+          <section>
+            <h2>Run Server</h2>
+            <pre><code data-trim>
+$ python manage.py runserver
+            </code></pre>
+          </section>
+          <section>
+            <img src=index.png />
+          </section>
+          <section>
+            <img src=login.png />
+          </section>
+          <section>
+            <img src=logged_in.png />
+          </section>
+          <section>
+            <img src=logged_out.png />
+          </section>
+          <section>
+            <img src=bad_auth.png />
           </section>
         </section>
 
