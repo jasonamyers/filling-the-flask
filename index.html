@@ -356,9 +356,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from flaskfilled import login_manager
 
-class User(db.Model):
+class User(db.Model, UserMixin):
     __tablename__ = 'users'
 
+    id = db.Column(db.Integer(), primary_key=True)
     username = db.Column(db.String, primary_key=True)
     password = db.Column(db.String)
     authenticated = db.Column(db.Boolean, default=False)
@@ -366,12 +367,13 @@ class User(db.Model):
           </section>
           <section>
             <h2>User Model required methods</h2>
+            <h3>Provided by UserMixin</h3>
             <pre><code data-trim>
 def is_active(self):
     return True
 
 def get_id(self):
-    return self.email
+    return self.id
 
 def is_authenticated(self):
     return self.authenticated
@@ -608,7 +610,195 @@ def login():
             </code></pre></p>
           </section>
         </section>
+        <section>
+          <section>
+            <h2>Authorization</h2>
+            <img data-src="link-banned.png" />
+          </section>
+          <section>
+            <h2>flask-principal</h2>
+            <p><pre><code data-trim>pip install flask-principal</code></pre></p>
+          </section>
+          <section>
+            <h2>__init__.py</h2>
+            <p>
+            <pre><code data-trim>
+from flask.ext.principal import Principal
 
+principal = Principal()
+
+
+def create_app(config_name):
+    principal.init_app(app)
+            </code></pre>
+            </p>
+          </section>
+          <section>
+            <h2>models.py</h2>
+            <p>
+            <pre><code data-trim>
+roles_users = db.Table('roles_users',
+                       db.Column('user_id', db.Integer(),
+                                 db.ForeignKey('users.user_id')),
+                       db.Column('role_id', db.Integer(),
+                                 db.ForeignKey('roles.id')))
+
+
+class Role(db.Model):
+    __tablename__ = 'roles'
+
+    id = db.Column(db.Integer(), primary_key=True)
+    name = db.Column(db.String(80), unique=True)
+    description = db.Column(db.String(255))
+            </code></pre>
+            </p>
+          </section>
+          <section>
+            <h2>models.py - User Class</h2>
+            <p>
+            <pre><code data-trim>
+class User(db.Model, UserMixin):
+    roles = db.relationship('Role', secondary=roles_users,
+                            primaryjoin=user_id == roles_users.c.user_id,
+                            backref='users')
+            </code></pre>
+            </p>
+          </section>
+          <section>
+            <h2>models.py - Identity loader</h2>
+            <p>
+            <pre><code data-trim>
+@identity_loaded.connect
+def on_identity_loaded(sender, identity):
+    # Set the identity user object
+    identity.user = current_user
+
+    # Add the UserNeed to the identity
+    if hasattr(current_user, 'id'):
+        identity.provides.add(UserNeed(current_user.id))
+
+    # Assuming the User model has a list of roles, update the
+    # identity with the roles that the user provides
+    if hasattr(current_user, 'roles'):
+        for role in current_user.roles:
+            identity.provides.add(RoleNeed(role.name))
+            </code></pre>
+            </p>
+          </section>
+          <section>
+            <h2>auth/views.py</h2>
+            <p><pre><code data-trim>
+from flask import current_app
+
+from flask.ext.principal import identity_changed, Identity
+
+
+@auth.route('/login', methods=['GET', 'POST'])
+def login():
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(username=form.username.data).first()
+        if user is not None and user.verify_password(form.password.data):
+            login_user(user)
+            identity_changed.send(current_app._get_current_object(),
+                                  identity=Identity(user.user_id))
+            next = request.args.get('next')
+            return redirect(next or url_for('main.index'))
+        else:
+            flash('Wrong username or password.')
+    return render_template('auth/login.html', form=form)
+            </code></pre></p>
+          </section>
+          <section>
+            <h2>auth/__init__.py</h2>
+            <p><pre><code data-trim>
+from flask.ext.principal import Permission, RoleNeed
+
+admin_permission = Permission(RoleNeed('admin'))
+            </code></pre></p>
+          </section>
+          <section>
+            <h2>main/views.py</h2>
+            <p><pre><code data-trim>
+from flaskfilled.auth import admin_permission
+
+@main.route('/settings', methods=['GET'])
+@admin_permission.require()
+def settings():
+    return render_template('main/settings.html')
+            </code></pre></p>
+          </section>
+          <section>
+            <img data-src="perm_denied.png" />
+          </section>
+          <section>
+            <img data-src="settings.png" />
+          </section>
+        </section>
+        <section>
+          <h2>Sending Mail</h2>
+          <img data-src="mail.png" />
+        </section>
+        <section>
+          <section>
+          <h2>flask-mail</h2>
+          <ul>
+            <li>Works with Flask config</li>
+            <li>Simplies Message Construction</li>
+          </ul>
+          </section>
+          <section>
+            <h2>__init__.py</h2>
+            <p><pre><code data-trim>
+from flask.ext.mail import Mail
+mail = Mail()
+
+
+def create_app(config_name):
+    mail.init_app(app)
+            </code></pre> </p>
+          </section>
+          <section>
+            <h2>__init__.py</h2>
+            <p><pre><code data-trim>
+from flask.ext.mail import Mail
+mail = Mail()
+
+
+def create_app(config_name):
+    mail.init_app(app)
+            </code></pre> </p>
+          </section>
+          <section>
+            <h2>main/views.py</h2>
+            <pre><code data-trim>
+from flask_mail import Message
+
+
+@main.route('/mailme', methods=['GET'])
+def mail():
+    msg = Message('COOKIES!',
+                  sender='from@example.com',
+                  recipients=['to@example.com'])
+    msg.body = 'There all mine!'
+    msg.html = '<b>There all mine!</b>'
+    mail.send(msg)
+            </code></pre>
+          </section>
+        </section>
+        <section>
+          <h2>What other things are out there?</h2>
+          <ul>
+            <li>flask-security</li>
+            <li>flask-moment</li>
+          </ul>
+          <p>https://github.com/humiaozuzu/awesome-flask</p>
+        </section>
+        <section>
+          <h2>Questions</h2>
+          <p>Jason Myers / @jasonamyers / Essential SQLAlchemy 2nd Ed O'Reilly
+          <img data-src="questions.jpg" />
+        </section>
 			</div>
 
 		</div>
