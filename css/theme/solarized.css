@@ -147,8 +147,11 @@ body {
   overflow: auto;
   max-height: 400px;
   word-wrap: normal;
-  background: #3F3F3F;
-  color: #DCDCDC; }
+  /*background: #3F3F3F;*/
+  background: #fdf6e3;
+  /*color: #DCDCDC; */
+  color: #657b83;
+  }
 
 .reveal table {
   margin: auto;
